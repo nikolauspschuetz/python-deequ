@@ -1073,7 +1073,6 @@ class TestChecks(unittest.TestCase):
         )
 
     def test_hasNumberOfDistinctValues_without_binning_args(self):
-        # Issue #81: binningUdf and maxBins must be optional
         check = Check(self.spark, CheckLevel.Warning, "test hasNumberOfDistinctValues optional")
         result = self.run_check(check.hasNumberOfDistinctValues("b", lambda x: x == 3))
         self.assertEqual(result, [Row(constraint_status="Success")])
@@ -1114,7 +1113,6 @@ class TestChecks(unittest.TestCase):
         self.assertEqual(result, [Row(constraint_status="Success")])
 
     def test_hasHistogramValues_without_binning_args(self):
-        # Issue #81: binningUdf and maxBins must be optional
         def assertion_func(x):
             def _parse_dv(dv):
                 return dv.absolute(), dv.ratio()
