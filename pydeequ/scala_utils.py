@@ -5,26 +5,13 @@ from py4j.java_gateway import DEFAULT_PYTHON_PROXY_PORT, JavaObject
 
 
 def _ensure_dynamic_callback_port(gateway):
-    """Make sure the py4j callback server will NOT bind the hardcoded default
-    port (25334) before it is started.
+    """Switch the gateway's callback server off the hardcoded default port (25334).
 
-    Historically PyDeequ called ``gateway.start_callback_server()`` with no
-    arguments. With older py4j/pyspark gateways that left the callback server
-    on the hardcoded default port ``DEFAULT_PYTHON_PROXY_PORT`` (25334), so two
-    pyspark applications -- or two runs on the same host -- using a lambda-based
-    ``Check`` collided with
-    ``OSError: [Errno 98] Address already in use (127.0.0.1:25334)``
-    (issues #86, #19, #7, #72, #156, #173, #198).
-
-    The fix is simply to ask the OS for a free port (``port = 0``). We mutate
-    the gateway's EXISTING ``callback_server_parameters`` rather than passing a
-    fresh ``CallbackServerParameters`` object, so PySpark's own callback wiring
-    is preserved -- the JVM-side callback client stays consistent (no "Error
-    while obtaining a new communication channel", #19) and, crucially,
-    ``shutdown_callback_server()`` still returns cleanly at teardown. Passing a
-    fresh parameters object + ``resetCallbackClient`` instead makes the accept
-    thread un-joinable and hangs shutdown on Linux and macOS, which would hang
-    the test suite's ``tearDownClass``.
+    If it is still on ``DEFAULT_PYTHON_PROXY_PORT``, mutate the existing
+    ``callback_server_parameters`` to an OS-assigned free port (``0``) so
+    concurrent applications don't collide on 25334. Mutating the existing
+    parameters (rather than passing a fresh object) keeps PySpark's callback
+    wiring intact so shutdown stays clean.
     """
     params = getattr(gateway, "callback_server_parameters", None)
     if params is not None and getattr(params, "port", 0) == DEFAULT_PYTHON_PROXY_PORT:
@@ -40,15 +27,10 @@ class PythonCallback:
         # https://github.com/bartdag/py4j/blob/master/py4j-python/src/py4j/java_gateway.py
         callback_server = self.gateway.get_callback_server()
         if callback_server is None:
-            # No callback server yet: ensure a dynamic port (avoid the 25334
-            # collision) and start it the stock way so PySpark's callback
-            # wiring -- and clean shutdown -- are preserved.
             _ensure_dynamic_callback_port(self.gateway)
             self.gateway.start_callback_server()
             print("Python Callback server started!")  # TODO Logging
         elif callback_server.is_shutdown:
-            # The previous callback server was shut down (e.g. a prior Spark
-            # session was stopped). Restart it (also dynamic-port safe).
             callback_server.close()
             _ensure_dynamic_callback_port(self.gateway)
             self.gateway.restart_callback_server()
